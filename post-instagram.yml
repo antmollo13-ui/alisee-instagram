@@ -1,0 +1,52 @@
+# METTI QUESTO FILE NEL REPO IN:  .github/workflows/post-instagram.yml
+name: post-instagram
+
+on:
+  workflow_dispatch: {}          # bottone "Run workflow" per lanciarlo a mano
+  # schedule:
+  #   - cron: "0 6 * * *"        # ogni giorno ~06:00 UTC (togli il # per attivarlo; il cron di GitHub e' approssimativo)
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      # La run di ALISEE deve produrre 'snapshot.png' nella radice del repo.
+      # Per il primo test: carica a mano una qualsiasi immagine chiamata snapshot.png
+      - name: Copia snapshot con nome univoco
+        id: img
+        run: |
+          TS=$(date -u +%Y%m%d-%H%M%S)
+          cp snapshot.png "snap-$TS.png"
+          echo "path=snap-$TS.png" >> "$GITHUB_OUTPUT"
+
+      - name: Commit e push immagine
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "snapshot $(date -u +%FT%TZ)" || echo "niente da committare"
+          git push
+
+      - name: Costruisci raw URL pubblico (con SHA)
+        id: url
+        run: |
+          SHA=$(git rev-parse HEAD)
+          echo "raw=https://raw.githubusercontent.com/${{ github.repository }}/$SHA/${{ steps.img.outputs.path }}" >> "$GITHUB_OUTPUT"
+
+      - name: Posta su Instagram
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          python post_instagram.py \
+            --image-url "${{ steps.url.outputs.raw }}" \
+            --caption "🌬️ Previsione vento ALISEE aggiornata. #kitesurf #vento #meteo"
